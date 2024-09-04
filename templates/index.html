@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ljudklipp Processor</title>
+</head>
+<body>
+    <h1>Ljudklipp Processor</h1>
+
+    <form action="/" method="POST" enctype="multipart/form-data">
+        <label for="file">Välj en textfil:</label>
+        <input type="file" id="file" name="file" accept=".txt">
+        <button type="submit">Ladda upp</button>
+    </form>
+
+    {% if result %}
+    <h2>Resultat</h2>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Ljudfil</th>
+                <th>Längd</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in result %}
+            <tr>
+                <td>{{ row[0] }}</td>
+                <td>{{ row[1] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <form action="/save_csv" method="POST">
+        <input type="hidden" name="result[]" value="{{ result }}">
+        <button type="submit">Spara till CSV</button>
+    </form>
+
+    <form action="/save_pdf" method="POST">
+        <input type="hidden" name="result[]" value="{{ result }}">
+        <button type="submit">Spara till PDF</button>
+    </form>
+    {% endif %}
+</body>
+</html>

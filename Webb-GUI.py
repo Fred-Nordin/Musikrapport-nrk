@@ -1,17 +1,17 @@
 import re
-import tkinter as tk
-from tkinter import filedialog
-from tkinter import ttk
 import csv
 import os
 from collections import defaultdict
 from fpdf import FPDF
+from flask import Flask, request, render_template, send_file, redirect, url_for
+from io import BytesIO
+
+app = Flask(__name__)
 
 
-def process_file(file_path):
-    # Läs in textfilen
-    with open(file_path, 'r') as file:
-        text = file.read()
+# Funktion för att bearbeta filen, samma som tidigare
+def process_file(file_content):
+    text = file_content.decode('utf-8')
 
     # Extrahera ljudklippen från texten
     clips = re.findall(r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+:\d+:\d+):\d+\s+(\d+:\d+:\d+):\d+', text)
@@ -22,38 +22,30 @@ def process_file(file_path):
 
     for clip in clips:
         clip_name = clip[2]
-
-        # Skip clips with '.grp' in the name
         if '.grp' in clip_name:
             continue
 
         start_tid = clip[3]
         slut_tid = clip[4]
 
-        # Beräkna längden i sekunder
         start_tider = start_tid.split(':')
         slut_tider = slut_tid.split(':')
         start_sec = int(start_tider[0]) * 3600 + int(start_tider[1]) * 60 + int(start_tider[2])
         slut_sec = int(slut_tider[0]) * 3600 + int(slut_tider[1]) * 60 + int(slut_tider[2])
         duration_sec = slut_sec - start_sec
 
-        # Lägg till till den totala längden
         total_duration_sec += duration_sec
 
-        # Bearbeta ljudfilens namn
         ljudfil = clip_name.replace('_', ' ').replace('-', ' ')
-        ljudfil = re.sub(r'(?<=\s)\d+(?=\.\w+$|\s*$)', '',
-                         ljudfil)  # Ta bort siffror före punkten efter ett mellanslag eller vid slutet av strängen
-        ljudfil = re.sub(r'\.\w+$', '', ljudfil)  # Ta bort punkten och allt som följer efter den
-        ljudfil = re.sub(r'\bSTEMS\b.*', '', ljudfil)  # Ta bort ordet STEMS och allt efter
-        ljudfil = ' '.join(ljudfil.split())  # Ta bort överflödiga mellanslag
+        ljudfil = re.sub(r'(?<=\s)\d+(?=\.\w+$|\s*$)', '', ljudfil)
+        ljudfil = re.sub(r'\.\w+$', '', ljudfil)
+        ljudfil = re.sub(r'\bSTEMS\b.*', '', ljudfil)
+        ljudfil = ' '.join(ljudfil.split())
 
-        # Lägg till längden till den aktuella ljudfilens totala längd
         clip_durations[ljudfil] += duration_sec
 
     result = []
     for ljudfil, total_sec in clip_durations.items():
-        # Konvertera den totala längden till formatet "HH:MM:SS"
         duration_hours = total_sec // 3600
         duration_minutes = (total_sec % 3600) // 60
         duration_seconds = total_sec % 60
@@ -61,7 +53,6 @@ def process_file(file_path):
 
         result.append((ljudfil, duration_format))
 
-    # Lägg till total längd för alla ljudklipp
     total_duration_hours = total_duration_sec // 3600
     total_duration_minutes = (total_duration_sec % 3600) // 60
     total_duration_seconds = total_duration_sec % 60
@@ -72,136 +63,65 @@ def process_file(file_path):
     return result
 
 
-def open_file():
-    global file_path
-    file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-    if file_path:
-        result = process_file(file_path)
-        for row in tree.get_children():
-            tree.delete(row)
-        for row in result:
-            tree.insert("", "end", values=row)
-        print(f"File opened: {file_path}")  # Debug message
+# Route för att visa formulär och resultat
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        if "file" not in request.files:
+            return "No file part", 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return "No selected file", 400
+
+        result = process_file(file.read())
+        return render_template("index.html", result=result)
+
+    return render_template("index.html", result=None)
 
 
-def save_to_csv():
-    if not file_path:
-        print("No file selected")  # Debug message
-        return
-    save_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-    if not save_path:
-        return
-    result = process_file(file_path)
+# Route för att spara som CSV
+@app.route("/save_csv", methods=["POST"])
+def save_csv():
+    result = request.form.getlist('result[]')
+    csv_output = BytesIO()
 
-    # Save as CSV
-    with open(save_path, 'w', newline='') as csvfile:
-        fieldnames = ['Ljudfil', 'Längd']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in result:
-            writer.writerow({'Ljudfil': row[0], 'Längd': row[1]})
-    print(f"CSV file saved: {save_path}")  # Debug message
+    writer = csv.writer(csv_output)
+    writer.writerow(['Ljudfil', 'Längd'])
+    for row in result:
+        writer.writerow(row.split(','))
+
+    csv_output.seek(0)
+    return send_file(csv_output, mimetype='text/csv', as_attachment=True, download_name='output.csv')
 
 
-def save_to_pdf():
-    if not file_path:
-        print("No file selected")  # Debug message
-        return
-    save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
-    if not save_path:
-        return
-    result = process_file(file_path)
-    filename = os.path.basename(file_path).replace('.txt', '')
+# Route för att spara som PDF
+@app.route("/save_pdf", methods=["POST"])
+def save_pdf():
+    result = request.form.getlist('result[]')
+    pdf_output = BytesIO()
 
-    # Calculate the width of column A
-    max_width = max(len(row[0]) for row in result) * 2  # Adjust factor as needed
-
-    # Save as PDF
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"{filename} - Musikrapport", ln=True, align='C')
+    pdf.cell(200, 10, txt="Musikrapport", ln=True, align='C')
 
     pdf.ln(10)
-
-    # Column headers
     pdf.set_font("Arial", size=10)
-    pdf.cell(max_width, 10, txt="Ljudfil", border=1)
+    pdf.cell(100, 10, txt="Ljudfil", border=1)
     pdf.cell(40, 10, txt="Längd", border=1)
     pdf.ln()
 
-    # Add rows
     for row in result:
-        pdf.cell(max_width, 10, txt=row[0], border=1)
-        pdf.cell(40, 10, txt=row[1], border=1)
+        ljudfil, längd = row.split(',')
+        pdf.cell(100, 10, txt=ljudfil, border=1)
+        pdf.cell(40, 10, txt=längd, border=1)
         pdf.ln()
 
-    pdf.output(save_path)
-    print(f"PDF file saved: {save_path}")  # Debug message
+    pdf.output(pdf_output)
+    pdf_output.seek(0)
+    return send_file(pdf_output, mimetype='application/pdf', as_attachment=True, download_name='output.pdf')
 
 
-def on_tree_click(event):
-    global selected_column
-    region = tree.identify("region", event.x, event.y)
-    if region == "cell":
-        column = tree.identify_column(event.x)
-        selected_column = column
-
-
-def copy_selection(event):
-    selected_items = tree.selection()
-    if not selected_items:
-        return
-    copied_text = ""
-    for item in selected_items:
-        values = tree.item(item, "values")
-        col_index = int(selected_column.replace("#", "")) - 1
-        copied_text += values[col_index] + "\n"
-    root.clipboard_clear()
-    root.clipboard_append(copied_text)
-
-
-# Create the main window
-root = tk.Tk()
-root.title("Ljudklipp Processor")
-
-# Set the size of the window
-root.geometry("800x600")
-
-# Create a frame for the file selection
-frame = tk.Frame(root)
-frame.pack(pady=10)
-
-# Add a button to open the file dialog
-open_button = tk.Button(frame, text="Välj fil", command=open_file)
-open_button.pack(side=tk.LEFT, padx=10)
-
-# Add a button to save the output to a CSV file
-save_button = tk.Button(frame, text="Spara till CSV", command=save_to_csv)
-save_button.pack(side=tk.LEFT, padx=10)
-
-# Add a button to save the output to a PDF file
-pdf_button = tk.Button(frame, text="Spara till PDF", command=save_to_pdf)
-pdf_button.pack(side=tk.LEFT, padx=10)
-
-# Create a treeview widget to display the output
-columns = ("ljudfil", "längd")
-tree = ttk.Treeview(root, columns=columns, show="headings", selectmode="extended")
-tree.heading("ljudfil", text="Ljudfil")
-tree.heading("längd", text="Längd")
-tree.pack(expand=True, fill=tk.BOTH, pady=10)
-
-# Bind the treeview click event to track the selected column
-tree.bind("<ButtonRelease-1>", on_tree_click)
-
-# Bind the Ctrl+C shortcut to the copy function
-root.bind("<Control-c>", copy_selection)
-
-# Initialize the selected column
-selected_column = "#1"
-
-# Initialize the file path
-file_path = ""
-
-# Run the main event loop
-root.mainloop()
+if __name__ == "__main__":
+    app.run(debug=True)
