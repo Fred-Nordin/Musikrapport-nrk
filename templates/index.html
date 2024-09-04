@@ -4,44 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ljudklipp Processor</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
 </head>
 <body>
-    <h1>Ljudklipp Processor</h1>
+    <div class="container mt-5">
+        <h1 class="text-center">Textkonverterare för Musikrapportering</h1>
 
-    <form action="/" method="POST" enctype="multipart/form-data">
-        <label for="file">Välj en textfil:</label>
-        <input type="file" id="file" name="file" accept=".txt">
-        <button type="submit">Ladda upp</button>
-    </form>
+        <!-- Instruktionsbox med grön bakgrund -->
+        <div class="p-3 mb-3" style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724;">
+            <strong>Instruktioner:</strong>
+            <p>
+                Ladda upp den genererade txt-filen från Pro Tools. Resultat kommer att visas i en tabell nedan.<br>
+                Du kan även ladda ner CSV- eller PDF-filen med informationen.
+            </p>
+        </div>
 
-    {% if result %}
-    <h2>Resultat</h2>
-    <table border="1">
-        <thead>
-            <tr>
-                <th>Ljudfil</th>
-                <th>Längd</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in result %}
-            <tr>
-                <td>{{ row[0] }}</td>
-                <td>{{ row[1] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <form action="/" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Ladda upp TXT-fil:</label>
+                <input type="file" class="form-control" id="file" name="file" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Starta Konvertering</button>
+        </form>
 
-    <form action="/save_csv" method="POST">
-        <input type="hidden" name="result[]" value="{{ result }}">
-        <button type="submit">Spara till CSV</button>
-    </form>
+        {% if result %}
+        <div class="mt-5">
+            <h3>Konverterad Information:</h3>
+            <table class="table table-bordered table-striped">
+                <thead class="thead-dark">
+                    <tr>
+                        <th>Ljudfil</th>
+                        <th>Längd</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in result %}
+                    <tr>
+                        <td>{{ row[0] }}</td>
+                        <td>{{ row[1] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
 
-    <form action="/save_pdf" method="POST">
-        <input type="hidden" name="result[]" value="{{ result }}">
-        <button type="submit">Spara till PDF</button>
-    </form>
-    {% endif %}
+            <div class="mt-4">
+                <form action="/save_csv" method="POST" class="d-inline">
+                    <input type="hidden" name="result[]" value="{{ result }}">
+                    <button type="submit" class="btn btn-success">Ladda ner CSV</button>
+                </form>
+
+                <form action="/save_pdf" method="POST" class="d-inline">
+                    <input type="hidden" name="result[]" value="{{ result }}">
+                    <button type="submit" class="btn btn-info">Ladda ner PDF</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
